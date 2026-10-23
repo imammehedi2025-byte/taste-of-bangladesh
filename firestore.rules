@@ -1,0 +1,194 @@
+rules_version = '2';
+
+// Taste of Bangladesh — Firestore Security Rules
+// Default: everything is denied unless a rule below allows it.
+// Aggregate counters (foodStats) are written by clients, so every change is checked
+// against the rating / recommendation document written in the same transaction.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ───────── helpers ─────────
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(uid())); }
+
+    function validFoodId(id) {
+      // static foods: "district--slug"; community foods: "c_<submissionId>"
+      return id is string && id.size() <= 120 &&
+        (id.matches('^[a-z-]+--[a-z0-9-]+$') || id.matches('^c_[a-z-]+__[a-z0-9ঀ-৿-]+$'));
+    }
+    function safeText(s, min, max) {
+      return s is string && s.size() >= min && s.size() <= max && s.matches('^[^<>]*$');
+    }
+    function statsPath(foodId) { return /databases/$(database)/documents/foodStats/$(foodId); }
+    function ratingPath(foodId) { return /databases/$(database)/documents/foodRatings/$(uid() + '__' + foodId); }
+    function recPath(foodId) { return /databases/$(database)/documents/foodRecommendations/$(uid() + '__' + foodId); }
+
+    function statsBefore(foodId) {
+      return exists(statsPath(foodId))
+        ? get(statsPath(foodId)).data
+        : { 'ratingSum': 0, 'ratingCount': 0, 'mustTryCount': 0 };
+    }
+
+    // ───────── admins ─────────
+    // Created by hand in the Firebase console. Nobody can write here from the app.
+    match /admins/{adminId} {
+      allow get: if signedIn() && uid() == adminId;
+      allow list, write: if false;
+    }
+
+    // ───────── personal progress ─────────
+    match /userFoodProgress/{userId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['items', 'nickname', 'updatedAt'])
+        && (!('items' in request.resource.data) || (request.resource.data.items is map && request.resource.data.items.size() <= 1000))
+        && (!('nickname' in request.resource.data) || safeText(request.resource.data.nickname, 0, 30))
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn() && uid() == userId;
+    }
+
+    // ───────── ratings: one per user per food (enforced by document id) ─────────
+    match /foodRatings/{ratingId} {
+      // get works by id prefix so a transaction may read a not-yet-existing own rating
+      allow get: if signedIn() && ratingId.split('__')[0] == uid();
+      allow list: if signedIn() && resource.data.uid == uid();
+      allow create, update: if signedIn()
+        && ratingId == uid() + '__' + request.resource.data.foodId
+        && request.resource.data.keys().hasOnly(['uid', 'foodId', 'value', 'updatedAt'])
+        && request.resource.data.uid == uid()
+        && validFoodId(request.resource.data.foodId)
+        && request.resource.data.value is int
+        && request.resource.data.value >= 1 && request.resource.data.value <= 5
+        && request.resource.data.updatedAt == request.time
+        && (resource == null || resource.data.foodId == request.resource.data.foodId)
+        // the aggregate must move by exactly this change, in the same transaction
+        && existsAfter(statsPath(request.resource.data.foodId))
+        && getAfter(statsPath(request.resource.data.foodId)).data.ratingSum
+             == statsBefore(request.resource.data.foodId).ratingSum + request.resource.data.value - (resource == null ? 0 : resource.data.value)
+        && getAfter(statsPath(request.resource.data.foodId)).data.ratingCount
+             == statsBefore(request.resource.data.foodId).ratingCount + (resource == null ? 1 : 0);
+      allow delete: if false;
+    }
+
+    // ───────── Must Try: one per user per food ─────────
+    match /foodRecommendations/{recId} {
+      allow get: if signedIn() && recId.split('__')[0] == uid();
+      allow list: if signedIn() && resource.data.uid == uid();
+      allow create: if signedIn()
+        && recId == uid() + '__' + request.resource.data.foodId
+        && request.resource.data.keys().hasOnly(['uid', 'foodId', 'createdAt'])
+        && request.resource.data.uid == uid()
+        && validFoodId(request.resource.data.foodId)
+        && request.resource.data.createdAt == request.time
+        && getAfter(statsPath(request.resource.data.foodId)).data.mustTryCount
+             == statsBefore(request.resource.data.foodId).mustTryCount + 1;
+      allow delete: if signedIn()
+        && resource.data.uid == uid()
+        && getAfter(statsPath(resource.data.foodId)).data.mustTryCount
+             == statsBefore(resource.data.foodId).mustTryCount - 1;
+      allow update: if false;
+    }
+
+    // ───────── public aggregates ─────────
+    match /foodStats/{foodId} {
+      allow read: if true;
+
+      function shape() {
+        return request.resource.data.keys().hasOnly(['ratingSum', 'ratingCount', 'mustTryCount'])
+          && request.resource.data.ratingSum is int && request.resource.data.ratingSum >= 0
+          && request.resource.data.ratingCount is int && request.resource.data.ratingCount >= 0
+          && request.resource.data.mustTryCount is int && request.resource.data.mustTryCount >= 0;
+      }
+      function prevStats() { return resource == null ? { 'ratingSum': 0, 'ratingCount': 0, 'mustTryCount': 0 } : resource.data; }
+      function nextStats() { return request.resource.data; }
+
+      function ratingChange() {
+        let rp = ratingPath(foodId);
+        let oldVal = exists(rp) ? get(rp).data.value : 0;
+        let newCount = exists(rp) ? 0 : 1;
+        return existsAfter(rp)
+          && nextStats().ratingSum == prevStats().ratingSum + getAfter(rp).data.value - oldVal
+          && nextStats().ratingCount == prevStats().ratingCount + newCount
+          && nextStats().mustTryCount == prevStats().mustTryCount;
+      }
+      function recChange() {
+        let rp = recPath(foodId);
+        return nextStats().ratingSum == prevStats().ratingSum
+          && nextStats().ratingCount == prevStats().ratingCount
+          && ((!exists(rp) && existsAfter(rp) && nextStats().mustTryCount == prevStats().mustTryCount + 1)
+            || (exists(rp) && !existsAfter(rp) && nextStats().mustTryCount == prevStats().mustTryCount - 1));
+      }
+
+      allow create, update: if signedIn() && validFoodId(foodId) && shape() && (ratingChange() || recChange());
+      allow delete: if false;
+    }
+
+    // ───────── community submissions ─────────
+    // Document id = districtId + '__' + normalizedName, so the same food cannot be submitted twice
+    // for one district: a second create becomes an update, which only admins may do.
+    match /foodSubmissions/{subId} {
+      function limitPath() { return /databases/$(database)/documents/userLimits/$(uid()); }
+
+      allow get, list: if resource.data.status == 'approved'
+        || (signedIn() && resource.data.createdBy == uid())
+        || isAdmin();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['nameEn', 'nameBn', 'districtId', 'divisionId', 'category', 'description',
+             'association', 'sourceUrl', 'normalizedName', 'status', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasAll(['nameEn', 'districtId', 'divisionId', 'category', 'description',
+             'association', 'normalizedName', 'status', 'createdBy', 'createdAt'])
+        && subId == request.resource.data.districtId + '__' + request.resource.data.normalizedName
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.createdAt == request.time
+        && safeText(request.resource.data.nameEn, 2, 60)
+        && safeText(request.resource.data.get('nameBn', ''), 0, 60)
+        && request.resource.data.districtId is string && request.resource.data.districtId.matches('^[a-z-]{3,20}$')
+        && request.resource.data.divisionId in ['dhaka', 'chattogram', 'rajshahi', 'khulna', 'barishal', 'sylhet', 'rangpur', 'mymensingh']
+        && request.resource.data.category in ['sweets', 'dairy', 'pitha', 'rice', 'fish', 'meat', 'street', 'produce', 'drinks', 'indigenous', 'other']
+        && safeText(request.resource.data.description, 10, 280)
+        && safeText(request.resource.data.association, 10, 280)
+        && request.resource.data.normalizedName is string
+        && request.resource.data.normalizedName.matches('^[a-z0-9ঀ-৿-]{2,60}$')
+        && (request.resource.data.get('sourceUrl', '') == ''
+            || (request.resource.data.sourceUrl is string && request.resource.data.sourceUrl.matches('^https?://[^\\s<>"]{4,290}$')))
+        // one submission per user per 60 seconds, enforced through userLimits in the same transaction
+        && getAfter(limitPath()).data.lastSubmissionAt == request.time
+        && (!exists(limitPath()) || get(limitPath()).data.lastSubmissionAt < request.time - duration.value(60, 's'));
+
+      // Moderation: only admins, and only the review fields may change.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt'])
+        && request.resource.data.status in ['pending', 'approved', 'rejected']
+        && safeText(request.resource.data.get('reviewNote', ''), 0, 200)
+        && request.resource.data.reviewedBy == uid()
+        && request.resource.data.reviewedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // ───────── per-user submission cooldown ─────────
+    match /userLimits/{userId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['lastSubmissionAt'])
+        && request.resource.data.lastSubmissionAt == request.time;
+      allow delete: if false;
+    }
+
+    // ───────── reports (problem with a food entry) ─────────
+    match /foodReports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['foodId', 'reason', 'note', 'uid', 'createdAt'])
+        && validFoodId(request.resource.data.foodId)
+        && request.resource.data.reason in ['wrong-district', 'wrong-name', 'not-famous', 'duplicate', 'offensive', 'other']
+        && safeText(request.resource.data.note, 0, 500)
+        && request.resource.data.uid == uid()
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+  }
+}

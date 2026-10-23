@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource/noto-serif-bengali/600.css';
+@import '@fontsource/noto-serif-bengali/700.css';
+@import '@fontsource/hind-siliguri/400.css';
+@import '@fontsource/hind-siliguri/600.css';
+
+@theme {
+  --color-paddy: #0f4a37;
+  --color-paddy-deep: #0a3627;
+  --color-paddy-soft: #dfe8dc;
+  --color-paper: #f5eedc;
+  --color-paper-hi: #fbf7ec;
+  --color-chili: #c4352b;
+  --color-chili-soft: #f6dcd6;
+  --color-turmeric: #e0a21c;
+  --color-turmeric-soft: #f7e7bd;
+  --color-ink: #22201c;
+  --color-ink-soft: #5b564c;
+  --color-jute: #d9ccae;
+
+  --font-sans: 'Bricolage Grotesque Variable', 'Hind Siliguri', system-ui, sans-serif;
+  --font-bn: 'Noto Serif Bengali', 'Hind Siliguri', serif;
+  --font-bnui: 'Hind Siliguri', 'Bricolage Grotesque Variable', sans-serif;
+
+  --radius-plate: 1.25rem;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-turmeric);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Kantha running stitch — the structural border used throughout */
+@utility stitch {
+  background-image:
+    linear-gradient(90deg, currentColor 55%, transparent 0),
+    linear-gradient(90deg, currentColor 55%, transparent 0),
+    linear-gradient(0deg, currentColor 55%, transparent 0),
+    linear-gradient(0deg, currentColor 55%, transparent 0);
+  background-size: 12px 1.5px, 12px 1.5px, 1.5px 12px, 1.5px 12px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+}
+@utility stitch-line {
+  height: 1.5px;
+  background-image: linear-gradient(90deg, currentColor 55%, transparent 0);
+  background-size: 12px 1.5px;
+}
+@utility btn {
+  @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55;
+}
+@utility btn-primary {
+  @apply btn bg-paddy text-paper-hi hover:bg-paddy-deep;
+}
+@utility btn-chili {
+  @apply btn bg-chili text-white hover:bg-[#a72a21];
+}
+@utility btn-ghost {
+  @apply btn border border-ink/20 bg-paper-hi text-ink hover:border-ink/45;
+}
+@utility field {
+  @apply w-full rounded-xl border border-ink/20 bg-paper-hi px-4 py-3 text-base outline-none transition-colors focus:border-paddy focus:ring-2 focus:ring-paddy/20;
+}
+@utility label {
+  @apply mb-1.5 block text-sm font-semibold text-ink;
+}
+@utility bn {
+  font-family: var(--font-bn);
+}
+@utility bnui {
+  font-family: var(--font-bnui);
+}
+
+@keyframes stamp-in {
+  0% { transform: scale(1.6) rotate(-14deg); opacity: 0; }
+  60% { transform: scale(0.92) rotate(-6deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-8deg); opacity: 1; }
+}
+.stamp-in { animation: stamp-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@keyframes toast-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.toast-in { animation: toast-in 200ms ease-out both; }
