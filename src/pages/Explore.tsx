@@ -44,7 +44,9 @@ export default function Explore() {
     const t = setTimeout(() => setDebounced(q.trim()), 220);
     return () => clearTimeout(t);
   }, [q]);
-  useEffect(() => setShown(PAGE), [debounced, division, district, category, status, sort, mustTry]);
+  useEffect(() => {
+    setShown(PAGE);
+  }, [debounced, division, district, category, status, sort, mustTry]);
 
   const set = (k: string, v: string) => {
     const n = new URLSearchParams(params);
