@@ -65,13 +65,13 @@ export function ShareSheet({ open, onClose, title, fileName, shareText, shareUrl
   const enc = encodeURIComponent;
   return (
     <Modal open={open} onClose={onClose} title={title}>
-      <div className="overflow-hidden rounded-2xl bg-paper" style={{ aspectRatio: '4 / 5' }}>
+      <div className="max-h-[58vh] min-h-48 overflow-y-auto rounded-2xl bg-paper">
         {url ? (
-          <img src={url} alt={`${title} preview`} className="h-full w-full object-contain" />
+          <img src={url} alt={`${title} preview`} className="block h-auto w-full" />
         ) : err ? (
           <p className="p-6 text-chili">{err}</p>
         ) : (
-          <div className="flex h-full items-center justify-center gap-2 text-ink-soft">
+          <div className="flex h-48 items-center justify-center gap-2 text-ink-soft">
             <Spinner /> Drawing your card…
           </div>
         )}

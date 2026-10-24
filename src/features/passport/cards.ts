@@ -4,6 +4,10 @@
  */
 import type { Food, District } from '../../types';
 import { DISTRICT_PATHS, MAP_H, MAP_W } from '../../data/mapPaths';
+import { DISTRICTS } from '../../data/districts';
+import { DIVISIONS } from '../../data/divisions';
+import { foodEmoji } from '../../utils/emoji';
+import { layoutPins } from '../../utils/mapLayout';
 import { CATEGORY_BY_ID, SITE_URL } from '../../utils/meta';
 import { toBnDigits } from '../../utils/text';
 
@@ -121,13 +125,23 @@ function brand(ctx: CanvasRenderingContext2D, dark: boolean, y = 120) {
 export interface PassportInput {
   nickname: string;
   explored: Set<string>;
-  triedCount: number;
-  titleEn: string;
   titleBn: string;
-  highlights: Food[];
+  /** every researched food marked as tried */
+  tried: Food[];
 }
 
-function drawMap(ctx: CanvasRenderingContext2D, explored: Set<string>, x: number, y: number, w: number) {
+const EMOJI = '"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+const LABEL = '"Hind Siliguri", sans-serif';
+const NAMES_BN = Object.fromEntries(DISTRICTS.map((d) => [d.id, d.nameBn]));
+
+/** "নাটোরের কাঁচাগোল্লা" → "কাঁচাগোল্লা" when the row already says নাটোর. */
+function shortName(f: Food) {
+  const d = NAMES_BN[f.districtId];
+  for (const suf of ['ের ', 'র ', 'এর ']) if (d && f.nameBn.startsWith(d + suf)) return f.nameBn.slice(d.length + suf.length);
+  return f.nameBn;
+}
+
+function drawMap(ctx: CanvasRenderingContext2D, explored: Set<string>, pins: Record<string, { emoji: string; count: number }>, x: number, y: number, w: number) {
   const s = w / MAP_W;
   ctx.save();
   ctx.translate(x, y);
@@ -142,113 +156,268 @@ function drawMap(ctx: CanvasRenderingContext2D, explored: Set<string>, x: number
     ctx.lineWidth = 1.1 / s;
     ctx.stroke(path);
   }
+  // pins + names (same layout rules as the website map)
+  const R = 16;
+  const F = 19;
+  ctx.font = `600 ${F}px ${LABEL}`;
+  const layout = layoutPins(Object.keys(pins), (t) => ctx.measureText(t).width * 1.08, NAMES_BN, R, F);
+  for (const l of layout) {
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, R, 0, Math.PI * 2);
+    ctx.fillStyle = C.paperHi;
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = C.chili;
+    ctx.stroke();
+    ctx.font = `19px ${EMOJI}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.ink;
+    ctx.fillText(pins[l.id].emoji, l.x, l.y + 1);
+    if (pins[l.id].count > 1) {
+      ctx.beginPath();
+      ctx.arc(l.x + R * 0.8, l.y - R * 0.8, 8, 0, Math.PI * 2);
+      ctx.fillStyle = C.turmeric;
+      ctx.fill();
+      ctx.fillStyle = C.ink;
+      ctx.font = `700 11px ${SANS}`;
+      ctx.fillText(String(pins[l.id].count), l.x + R * 0.8, l.y - R * 0.8 + 0.5);
+    }
+    if (l.label) {
+      ctx.font = `600 ${F}px ${LABEL}`;
+      ctx.textAlign = l.label.anchor === 'start' ? 'left' : l.label.anchor === 'end' ? 'right' : 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = C.paddyDeep;
+      ctx.strokeText(NAMES_BN[l.id], l.label.x, l.label.y);
+      ctx.fillStyle = C.paperHi;
+      ctx.fillText(NAMES_BN[l.id], l.label.x, l.label.y);
+    }
+  }
   ctx.restore();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
   return MAP_H * s;
+}
+
+interface Row {
+  emoji: string;
+  district: string;
+  foods: string;
+}
+
+/** Lays the tasted-food list out in up to two balanced columns; returns lines with positions. */
+function planList(ctx: CanvasRenderingContext2D, tried: Food[], width: number) {
+  const byDistrict = new Map<string, Food[]>();
+  for (const f of tried) {
+    if (!byDistrict.has(f.districtId)) byDistrict.set(f.districtId, []);
+    byDistrict.get(f.districtId)!.push(f);
+  }
+  const blocks: { title: string; rows: Row[] }[] = [];
+  for (const div of DIVISIONS) {
+    const rows: Row[] = [];
+    for (const d of DISTRICTS.filter((x) => x.divisionId === div.id)) {
+      const fs = byDistrict.get(d.id);
+      if (!fs) continue;
+      rows.push({ emoji: foodEmoji(fs[0]), district: d.nameBn, foods: fs.map(shortName).join(', ') });
+    }
+    if (rows.length) blocks.push({ title: `${div.nameBn} বিভাগ`, rows });
+  }
+  const totalRows = blocks.reduce((n, b) => n + b.rows.length, 0);
+  const cols = totalRows > 6 ? 2 : 1;
+  const gutter = 40;
+  const colW = cols === 2 ? (width - gutter) / 2 : width;
+  const ROW = 30;
+  const LH = 42;
+  const HEAD = 52;
+
+  type Item = { kind: 'head'; text: string } | { kind: 'row'; emoji: string; district: string; lines: string[] };
+  const measured = blocks.map((b) => {
+    const items: Item[] = [{ kind: 'head', text: b.title }];
+    let h = HEAD;
+    for (const r of b.rows) {
+      ctx.font = `700 ${ROW}px ${BN}`;
+      const prefix = `${r.district}: `;
+      const pw = ctx.measureText(prefix).width;
+      ctx.font = `500 ${ROW}px ${LABEL}`;
+      // first line shares space with the district name; the rest use the full column
+      const words = r.foods.split(' ');
+      const lines: string[] = [];
+      let line = '';
+      let avail = colW - 50 - pw;
+      for (const w of words) {
+        const t = line ? `${line} ${w}` : w;
+        if (ctx.measureText(t).width > avail && line) {
+          lines.push(line);
+          line = w;
+          avail = colW - 50;
+        } else line = t;
+      }
+      if (line) lines.push(line);
+      items.push({ kind: 'row', emoji: r.emoji, district: prefix, lines });
+      h += lines.length * LH + 8;
+    }
+    return { items, h: h + 16 };
+  });
+  // greedy balance: each division block goes to the shorter column
+  const colsH = [0, 0];
+  const placed: { col: number; y: number; items: Item[] }[] = [];
+  for (const m of measured) {
+    const c = cols === 1 ? 0 : colsH[0] <= colsH[1] ? 0 : 1;
+    placed.push({ col: c, y: colsH[c], items: m.items });
+    colsH[c] += m.h;
+  }
+  return { placed, height: Math.max(...colsH), colW, gutter, ROW, LH, HEAD };
 }
 
 export async function drawPassport(p: PassportInput): Promise<Blob> {
   await ready();
-  const { c, ctx } = canvas();
+  await document.fonts?.load(`30px ${EMOJI}`, '🥭').catch(() => undefined);
   const n = p.explored.size;
-  ctx.fillStyle = C.paddy;
-  ctx.fillRect(0, 0, W, H);
+  const pins: Record<string, { emoji: string; count: number }> = {};
+  for (const f of p.tried) {
+    if (pins[f.districtId]) pins[f.districtId].count++;
+    else pins[f.districtId] = { emoji: foodEmoji(f), count: 1 };
+  }
 
-  brand(ctx, true, 110);
-
-  // Map on the right, as big as the card allows
-  const mapW = 560;
-  const mapX = W - 48 - mapW;
-  const mapY = 170;
-  const mapH = drawMap(ctx, p.explored, mapX, mapY, mapW);
-
-  // Left column: the score in plain words
+  // measure pass for the list, so the card is exactly as tall as it needs to be
   const L = 72;
-  const colW = mapX - L + 40;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = C.turmeric;
+  const innerW = W - 2 * L;
+  const scratch = document.createElement('canvas').getContext('2d')!;
+  const list = planList(scratch, p.tried, innerW);
+
+  const mapW = 800;
+  const mapH = (MAP_H * mapW) / MAP_W;
+  const mapY = 660;
+  const listTop = mapY + mapH + 110;
+  const listBodyTop = listTop + 70;
+  const listH = p.tried.length ? list.height : 60;
+  const ctaY = listBodyTop + listH + 30;
+  const height = Math.max(1350, ctaY + 130 + 90);
+
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = height;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported on this browser');
+  ctx.fillStyle = C.paddy;
+  ctx.fillRect(0, 0, W, height);
+
+  brand(ctx, true, 100);
+
+  // ── score ──
   const who = p.nickname || 'আমার স্বাদের ম্যাপ';
-  fitFont(ctx, who, /[\u0980-\u09FF]/.test(who) ? BN : SANS, 700, 54, 30, colW);
-  ctx.fillText(who, L, 250);
+  ctx.fillStyle = C.turmeric;
+  fitFont(ctx, who, /[ঀ-৿]/.test(who) ? BN : SANS, 700, 54, 30, innerW);
+  ctx.fillText(who, L, 205);
 
   ctx.fillStyle = 'rgba(251,247,236,0.85)';
-  ctx.font = `600 42px ${BN}`;
-  ctx.fillText('আমি বাংলাদেশের', L, 350);
+  ctx.font = `600 40px ${BN}`;
+  ctx.fillText('আমি বাংলাদেশের', L, 280);
 
   ctx.fillStyle = C.paperHi;
-  ctx.font = `700 230px ${BN}`;
+  ctx.font = `700 200px ${BN}`;
   const big = toBnDigits(n);
-  ctx.fillText(big, L - 6, 560);
-  const bigW = ctx.measureText(big).width;
-  ctx.fillStyle = 'rgba(251,247,236,0.65)';
+  ctx.fillText(big, L - 6, 475);
+  const bx = L + ctx.measureText(big).width + 24;
+  ctx.fillStyle = 'rgba(251,247,236,0.7)';
   ctx.font = `700 64px ${BN}`;
-  ctx.fillText(`/${toBnDigits(64)}`, L + bigW + 4, 560);
+  ctx.fillText(`/ ${toBnDigits(64)} জেলার`, bx, 395);
+  ctx.fillStyle = C.paperHi;
+  ctx.font = `600 52px ${BN}`;
+  ctx.fillText('স্বাদ নিয়েছি', bx, 465);
 
-  ctx.fillStyle = 'rgba(251,247,236,0.9)';
-  ctx.font = `600 46px ${BN}`;
-  ctx.fillText('জেলার স্বাদ নিয়েছি', L, 640);
-
-  // title pill
-  ctx.font = `700 32px ${BN}`;
+  ctx.font = `700 30px ${BN}`;
   const tw = ctx.measureText(p.titleBn).width;
   ctx.fillStyle = C.turmeric;
   ctx.beginPath();
-  ctx.roundRect(L, 690, tw + 48, 64, 32);
+  ctx.roundRect(L, 515, tw + 44, 58, 29);
   ctx.fill();
   ctx.fillStyle = C.ink;
-  ctx.fillText(p.titleBn, L + 24, 734);
-
-  // progress bar
+  ctx.fillText(p.titleBn, L + 22, 555);
   const pct = Math.round((n / 64) * 100);
-  const bw = Math.min(colW - 30, 380);
-  ctx.fillStyle = 'rgba(251,247,236,0.18)';
-  ctx.beginPath();
-  ctx.roundRect(L, 800, bw, 16, 8);
-  ctx.fill();
-  ctx.fillStyle = C.chili;
-  ctx.beginPath();
-  ctx.roundRect(L, 800, Math.max(16, (bw * n) / 64), 16, 8);
-  ctx.fill();
   ctx.fillStyle = 'rgba(251,247,236,0.85)';
   ctx.font = `600 30px ${BN}`;
-  ctx.fillText(`বাংলাদেশের ${toBnDigits(pct)}% · ${toBnDigits(p.triedCount)}টি খাবার`, L, 868);
+  ctx.fillText(`বাংলাদেশের ${toBnDigits(pct)}% · ${toBnDigits(p.tried.length)}টি খাবার`, L + tw + 70, 555);
 
-  // legend under the left column
+  ctx.fillStyle = 'rgba(251,247,236,0.18)';
+  ctx.beginPath();
+  ctx.roundRect(L, 605, innerW, 14, 7);
+  ctx.fill();
   ctx.fillStyle = C.chili;
   ctx.beginPath();
-  ctx.roundRect(L, 920, 28, 28, 6);
+  ctx.roundRect(L, 605, Math.max(14, (innerW * n) / 64), 14, 7);
+  ctx.fill();
+
+  // ── map ──
+  drawMap(ctx, p.explored, pins, (W - mapW) / 2, mapY, mapW);
+  ctx.fillStyle = C.chili;
+  ctx.beginPath();
+  ctx.roundRect(L, mapY + mapH + 28, 26, 26, 6);
   ctx.fill();
   ctx.fillStyle = 'rgba(251,247,236,0.85)';
   ctx.font = `500 28px ${BN}`;
-  ctx.fillText('= যে জেলার খাবার খেয়েছি', L + 42, 944);
+  ctx.fillText('= যে জেলার খাবার খেয়েছি', L + 40, mapY + mapH + 51);
 
-  // tasted foods line below the map
-  const listY = Math.max(mapY + mapH + 40, 1010);
-  if (p.highlights.length) {
-    ctx.fillStyle = 'rgba(251,247,236,0.9)';
-    ctx.font = `600 32px ${BN}`;
-    const line = 'খেয়েছি: ' + p.highlights.slice(0, 3).map((f) => f.nameBn).join(' · ');
-    wrap(ctx, line, W - 2 * L, 1).forEach((l) => ctx.fillText(l, L, listY));
+  // ── full list ──
+  ctx.fillStyle = C.paperHi;
+  ctx.font = `700 40px ${BN}`;
+  ctx.fillText('যা যা খেয়েছি', L, listTop + 30);
+  ctx.strokeStyle = 'rgba(224,162,28,0.6)';
+  ctx.setLineDash([14, 10]);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(L, listTop + 54);
+  ctx.lineTo(W - L, listTop + 54);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (!p.tried.length) {
+    ctx.fillStyle = 'rgba(251,247,236,0.75)';
+    ctx.font = `500 30px ${BN}`;
+    ctx.fillText('এখনো কোনো খাবার যোগ করা হয়নি।', L, listBodyTop + 30);
+  }
+  for (const blk of list.placed) {
+    const x0 = L + blk.col * (list.colW + list.gutter);
+    let y = listBodyTop + blk.y;
+    for (const it of blk.items) {
+      if (it.kind === 'head') {
+        ctx.fillStyle = C.turmeric;
+        ctx.font = `700 28px ${BN}`;
+        ctx.fillText(it.text, x0, y + 30);
+        y += list.HEAD;
+        continue;
+      }
+      ctx.font = `${list.ROW}px ${EMOJI}`;
+      ctx.fillText(it.emoji, x0, y + 30);
+      ctx.fillStyle = C.paperHi;
+      ctx.font = `700 ${list.ROW}px ${BN}`;
+      ctx.fillText(it.district, x0 + 50, y + 30);
+      const pw = ctx.measureText(it.district).width;
+      ctx.font = `500 ${list.ROW}px ${LABEL}`;
+      ctx.fillStyle = 'rgba(251,247,236,0.88)';
+      it.lines.forEach((ln, i) => ctx.fillText(ln, x0 + 50 + (i === 0 ? pw : 0), y + 30 + i * list.LH));
+      y += it.lines.length * list.LH + 8;
+    }
   }
 
-  // call to action band
-  const by = 1120;
+  // ── call to action ──
   ctx.fillStyle = C.paperHi;
   ctx.beginPath();
-  ctx.roundRect(48, by, W - 96, 130, 28);
+  ctx.roundRect(48, ctaY, W - 96, 130, 28);
   ctx.fill();
   ctx.fillStyle = C.paddy;
   ctx.font = `700 40px ${BN}`;
-  ctx.fillText('আপনি কয়টা জেলার স্বাদ নিয়েছেন?', 88, by + 56);
+  ctx.fillText('আপনি কয়টা জেলার স্বাদ নিয়েছেন?', 88, ctaY + 56);
   ctx.fillStyle = C.chili;
   ctx.font = `600 30px ${SANS}`;
-  ctx.fillText(SITE_URL.replace(/^https?:\/\//, ''), 88, by + 102);
+  ctx.fillText(SITE_URL.replace(/^https?:\/\//, ''), 88, ctaY + 102);
 
   ctx.fillStyle = 'rgba(251,247,236,0.7)';
   ctx.font = `400 22px ${SANS}`;
   ctx.textAlign = 'right';
-  ctx.fillText('Developed by Imam Mehedi Hasan', W - 56, H - 36);
+  ctx.fillText('Developed by Imam Mehedi Hasan', W - 56, height - 40);
   ctx.textAlign = 'left';
-  ctx.fillText('Map: BBS / OCHA (CC BY 3.0 IGO)', 56, H - 36);
+  ctx.fillText('Map: BBS / OCHA (CC BY 3.0 IGO)', 56, height - 40);
   return toBlob(c);
 }
 

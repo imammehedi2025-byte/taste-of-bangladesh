@@ -2,8 +2,8 @@ import { Check, LogIn, LogOut, MousePointerClick, Pencil, Share2 } from 'lucide-
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../hooks/useApp';
-import { achievementBn, computeJourney, TOTAL_DISTRICTS, SITE_URL, wantDistricts } from '../utils/meta';
-import { TasteMap, MapLegend } from '../components/TasteMap';
+import { achievementBn, computeJourney, districtPins, TOTAL_DISTRICTS, SITE_URL, wantDistricts } from '../utils/meta';
+import { TasteMap, MapLegend, NamesToggle } from '../components/TasteMap';
 import { DistrictSheet } from '../components/DistrictSheet';
 import { FoodCard } from '../components/FoodCard';
 import { EmptyState, Spinner } from '../components/ui';
@@ -22,6 +22,8 @@ export default function Passport() {
   const [saving, setSaving] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [allNames, setAllNames] = useState(false);
+  const pins = useMemo(() => districtPins(j.triedFoods), [j.triedFoods]);
   const [tab, setTab] = useState<'tried' | 'want'>('tried');
   const n = j.exploredDistricts.size;
   const pct = Math.round((n / TOTAL_DISTRICTS) * 100);
@@ -88,13 +90,16 @@ export default function Passport() {
             <TasteMap
               tasted={j.exploredDistricts}
               want={want}
+              pins={pins}
+              showAllNames={allNames}
               tone="dark"
               selected={selected}
               onSelect={setSelected}
-              className="mx-auto max-w-[460px]"
+              className="mx-auto max-w-[480px]"
             />
-            <div className="mt-2 flex justify-center">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
               <MapLegend tone="dark" />
+              <NamesToggle on={allNames} onChange={setAllNames} />
             </div>
           </div>
 
@@ -242,10 +247,8 @@ export default function Passport() {
           drawPassport({
             nickname,
             explored: j.exploredDistricts,
-            triedCount: j.triedFoods.length,
-            titleEn: j.title.en,
             titleBn: j.title.bn,
-            highlights: j.triedFoods.slice(-3).reverse(),
+            tried: j.triedFoods,
           })
         }
       />

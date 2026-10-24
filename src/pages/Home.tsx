@@ -4,10 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../hooks/useApp';
 import { FOODS } from '../data/foods';
 import { DIVISIONS } from '../data/divisions';
-import { TasteMap, MapLegend } from '../components/TasteMap';
+import { TasteMap, MapLegend, NamesToggle } from '../components/TasteMap';
 import { DistrictSheet } from '../components/DistrictSheet';
 import { FoodCard } from '../components/FoodCard';
-import { computeJourney, TOTAL_DISTRICTS, wantDistricts } from '../utils/meta';
+import { computeJourney, districtPins, TOTAL_DISTRICTS, wantDistricts } from '../utils/meta';
 import { toBnDigits } from '../utils/text';
 import { Spinner } from '../components/ui';
 
@@ -23,6 +23,8 @@ export default function Home() {
   const journey = useMemo(() => computeJourney(progress, community), [progress, community]);
   const want = useMemo(() => wantDistricts(progress, journey.exploredDistricts), [progress, journey.exploredDistricts]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [allNames, setAllNames] = useState(false);
+  const pins = useMemo(() => districtPins(journey.triedFoods), [journey.triedFoods]);
   const [q, setQ] = useState('');
   const nav = useNavigate();
 
@@ -93,9 +95,19 @@ export default function Home() {
             </Link>
           </div>
           <p className="bnui mb-2 text-sm text-paper-hi/80">👆 আপনার খাওয়া জেলায় চাপ দিন</p>
-          <TasteMap tasted={journey.exploredDistricts} want={want} tone="dark" selected={selected} onSelect={setSelected} className="mx-auto max-w-[380px]" />
-          <div className="mt-2 flex justify-center">
+          <TasteMap
+            tasted={journey.exploredDistricts}
+            want={want}
+            pins={pins}
+            showAllNames={allNames}
+            tone="dark"
+            selected={selected}
+            onSelect={setSelected}
+            className="mx-auto max-w-[400px]"
+          />
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <MapLegend tone="dark" />
+            <NamesToggle on={allNames} onChange={setAllNames} />
           </div>
         </div>
         <DistrictSheet districtId={selected} onClose={() => setSelected(null)} />

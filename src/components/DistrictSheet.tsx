@@ -8,6 +8,7 @@ import { Modal, Spinner } from './ui';
 import { toBnDigits } from '../utils/text';
 import { computeJourney } from '../utils/meta';
 import type { ProgressState } from '../types';
+import { foodEmoji } from '../utils/emoji';
 
 /**
  * Opens when a district is tapped on the map. One tap on a food marks it eaten,
@@ -46,7 +47,10 @@ export function DistrictSheet({ districtId, onClose }: { districtId: string | nu
             <li key={f.id} className={`rounded-2xl border p-3 ${st === 'tried' ? 'border-chili/40 bg-chili-soft/60' : 'border-ink/10 bg-paper'}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="bn text-lg leading-snug font-bold">{f.nameBn}</p>
+                  <p className="bn text-lg leading-snug font-bold">
+                    <span className="mr-1.5" aria-hidden="true">{foodEmoji(f)}</span>
+                    {f.nameBn}
+                  </p>
                   <p className="truncate text-sm text-ink-soft">{f.nameEn}</p>
                 </div>
                 <Link to={`/food/${encodeURIComponent(f.id)}`} onClick={onClose} className="shrink-0 rounded-full p-1.5 text-ink-soft hover:bg-ink/5" aria-label={`About ${f.nameEn}`}>

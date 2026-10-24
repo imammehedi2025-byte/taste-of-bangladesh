@@ -1,4 +1,5 @@
 import { Beef, Candy, Citrus, Coffee, Cookie, Fish, Milk, Mountain, Soup, Sparkles, Wheat, type LucideIcon } from 'lucide-react';
+import { foodEmoji } from './emoji';
 import type { FoodCategory, Food, ProgressState } from '../types';
 import { FOODS } from '../data/foods';
 import { DISTRICTS } from '../data/districts';
@@ -105,4 +106,16 @@ export function achievementBn(next?: { en: string; at: number }) {
     'Bangladesh Food Champion': 'বাংলাদেশের খাদ্য চ্যাম্পিয়ন',
   };
   return next ? map[next.en] ?? next.en : '';
+}
+
+/** One emoji pin per tasted district: the first tasted food's emoji and how many foods were tasted there. */
+export function districtPins(triedFoods: Food[]): Record<string, { emoji: string; count: number }> {
+  const out: Record<string, { emoji: string; count: number }> = {};
+  for (const f of triedFoods) {
+    if (f.community) continue;
+    const cur = out[f.districtId];
+    if (cur) cur.count++;
+    else out[f.districtId] = { emoji: foodEmoji(f), count: 1 };
+  }
+  return out;
 }
