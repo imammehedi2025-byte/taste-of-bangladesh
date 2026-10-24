@@ -8,6 +8,7 @@ A 64-district food discovery app. Find what each district is famous for, mark wh
 - Firebase Authentication (Anonymous + optional Google) and Cloud Firestore on the **Spark (no-cost) plan**
 - Hosting: Vercel Hobby (personal, non-commercial) **or** Firebase Hosting on Spark
 - PNG cards drawn in the browser with Canvas — no image APIs
+- Interactive “taste map”: 64 district shapes (BBS / OCHA ROAP via geoBoundaries, CC BY 3.0 IGO), simplified to ~29 KB in `src/data/mapPaths.ts`
 
 | Doc | What's in it |
 |---|---|

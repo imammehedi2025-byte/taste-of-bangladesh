@@ -114,7 +114,7 @@ export default function FoodDetail() {
                 if (st === 'tried') {
                   toast({
                     kind: 'success',
-                    text: `Saved as tried.${!food.community ? ` ${d.nameEn} is stamped in your passport.` : ''} Nice! Want to rate it?`,
+                    text: `Saved as tried.${!food.community ? ` ${d.nameEn} is now red on your map.` : ''} Nice! Want to rate it?`,
                     action: { label: 'Rate it', run: () => rateRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) },
                   });
                 } else if (st === 'want') toast({ kind: 'success', text: 'Added to your Want to try list.' });

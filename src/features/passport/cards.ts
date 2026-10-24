@@ -3,8 +3,7 @@
  * Size 1080×1350 (4:5) suits Facebook, Instagram and WhatsApp status.
  */
 import type { Food, District } from '../../types';
-import { DISTRICTS } from '../../data/districts';
-import { DIVISIONS } from '../../data/divisions';
+import { DISTRICT_PATHS, MAP_H, MAP_W } from '../../data/mapPaths';
 import { CATEGORY_BY_ID, SITE_URL } from '../../utils/meta';
 import { toBnDigits } from '../../utils/text';
 
@@ -22,13 +21,6 @@ const C = {
 };
 const SANS = '"Bricolage Grotesque Variable", "Hind Siliguri", sans-serif';
 const BN = '"Noto Serif Bengali", "Hind Siliguri", serif';
-
-/** First user-perceived character, so Bangla conjuncts are never split. */
-export function firstGrapheme(s: string): string {
-  const Seg = (Intl as unknown as { Segmenter?: new (l: string, o: object) => { segment: (s: string) => Iterable<{ segment: string }> } }).Segmenter;
-  if (Seg) for (const g of new Seg('bn', { granularity: 'grapheme' }).segment(s)) return g.segment;
-  return s.slice(0, 1);
-}
 
 async function ready() {
   if (!('fonts' in document)) return;
@@ -99,39 +91,6 @@ function stitchRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numb
   ctx.restore();
 }
 
-function stamp(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, label: string, filled: boolean) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  if (filled) ctx.rotate(-0.14);
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  if (filled) {
-    ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(0, 0, r - 7, 0, Math.PI * 2);
-    ctx.globalAlpha = 0.9;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = C.paperHi;
-    ctx.font = `700 ${Math.round(r * 0.55)}px ${BN}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, 0, 2);
-  } else {
-    ctx.globalAlpha = 0.35;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.arc(0, 0, r - 4, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
 function footer(ctx: CanvasRenderingContext2D, dark: boolean) {
   ctx.save();
   ctx.fillStyle = dark ? 'rgba(251,247,236,0.75)' : C.inkSoft;
@@ -157,7 +116,7 @@ function brand(ctx: CanvasRenderingContext2D, dark: boolean, y = 120) {
   ctx.restore();
 }
 
-/* ───────────────────────── Food Passport ───────────────────────── */
+/* ───────────────────────── Taste map card ───────────────────────── */
 
 export interface PassportInput {
   nickname: string;
@@ -168,73 +127,128 @@ export interface PassportInput {
   highlights: Food[];
 }
 
+function drawMap(ctx: CanvasRenderingContext2D, explored: Set<string>, x: number, y: number, w: number) {
+  const s = w / MAP_W;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.lineJoin = 'round';
+  for (const [id, p] of Object.entries(DISTRICT_PATHS)) {
+    const path = new Path2D(p.d);
+    const on = explored.has(id);
+    ctx.fillStyle = on ? C.chili : 'rgba(251,247,236,0.10)';
+    ctx.fill(path);
+    ctx.strokeStyle = on ? 'rgba(251,247,236,0.9)' : 'rgba(251,247,236,0.32)';
+    ctx.lineWidth = 1.1 / s;
+    ctx.stroke(path);
+  }
+  ctx.restore();
+  return MAP_H * s;
+}
+
 export async function drawPassport(p: PassportInput): Promise<Blob> {
   await ready();
   const { c, ctx } = canvas();
+  const n = p.explored.size;
   ctx.fillStyle = C.paddy;
   ctx.fillRect(0, 0, W, H);
-  stitchRect(ctx, 36, 36, W - 72, H - 72, 36, 'rgba(224,162,28,0.7)');
-  brand(ctx, true);
 
-  ctx.fillStyle = C.paperHi;
-  ctx.font = `600 34px ${SANS}`;
-  ctx.fillText('Food Passport', 72, 200);
-  const name = p.nickname || 'A curious taster';
-  fitFont(ctx, name, SANS, 700, 76, 44, W - 144);
-  ctx.fillText(name, 72, 285);
-  ctx.fillStyle = C.turmeric;
-  ctx.font = `700 40px ${BN}`;
-  ctx.fillText(p.titleBn, 72, 350);
-  ctx.fillStyle = 'rgba(251,247,236,0.8)';
-  ctx.font = `500 30px ${SANS}`;
-  ctx.fillText(p.titleEn, 72, 395);
+  brand(ctx, true, 110);
 
-  // Stamp grid: 8 rows (divisions) of up to 13 districts → laid out as 8×8 in division order.
-  const ordered = DIVISIONS.flatMap((d) => DISTRICTS.filter((x) => x.divisionId === d.id));
-  const cols = 11;
-  const gx = 72;
-  const gy = 430;
-  const cell = (W - 144) / cols;
-  const r = cell * 0.42;
-  ordered.forEach((d, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const cx = gx + cell * col + cell / 2;
-    const cy = gy + cell * row + cell / 2;
-    const on = p.explored.has(d.id);
-    stamp(ctx, cx, cy, r, on ? C.chili : C.paperHi, firstGrapheme(d.nameBn), on);
-  });
+  // Map on the right, as big as the card allows
+  const mapW = 560;
+  const mapX = W - 48 - mapW;
+  const mapY = 170;
+  const mapH = drawMap(ctx, p.explored, mapX, mapY, mapW);
 
-  const gridBottom = gy + cell * Math.ceil(ordered.length / cols);
-  ctx.fillStyle = C.paperHi;
-  ctx.font = `700 64px ${SANS}`;
+  // Left column: the score in plain words
+  const L = 72;
+  const colW = mapX - L + 40;
   ctx.textAlign = 'left';
-  ctx.fillText(`${p.explored.size}/64`, 72, gridBottom + 80);
-  const wNum = ctx.measureText(`${p.explored.size}/64`).width;
-  ctx.font = `500 28px ${SANS}`;
-  ctx.fillStyle = 'rgba(251,247,236,0.8)';
-  ctx.fillText(`districts tasted · ${p.triedCount} food${p.triedCount === 1 ? '' : 's'}`, 72 + wNum + 18, gridBottom + 74);
+  ctx.fillStyle = C.turmeric;
+  const who = p.nickname || 'আমার স্বাদের ম্যাপ';
+  fitFont(ctx, who, /[\u0980-\u09FF]/.test(who) ? BN : SANS, 700, 54, 30, colW);
+  ctx.fillText(who, L, 250);
+
+  ctx.fillStyle = 'rgba(251,247,236,0.85)';
+  ctx.font = `600 42px ${BN}`;
+  ctx.fillText('আমি বাংলাদেশের', L, 350);
+
+  ctx.fillStyle = C.paperHi;
+  ctx.font = `700 230px ${BN}`;
+  const big = toBnDigits(n);
+  ctx.fillText(big, L - 6, 560);
+  const bigW = ctx.measureText(big).width;
+  ctx.fillStyle = 'rgba(251,247,236,0.65)';
+  ctx.font = `700 64px ${BN}`;
+  ctx.fillText(`/${toBnDigits(64)}`, L + bigW + 4, 560);
+
+  ctx.fillStyle = 'rgba(251,247,236,0.9)';
+  ctx.font = `600 46px ${BN}`;
+  ctx.fillText('জেলার স্বাদ নিয়েছি', L, 640);
+
+  // title pill
+  ctx.font = `700 32px ${BN}`;
+  const tw = ctx.measureText(p.titleBn).width;
+  ctx.fillStyle = C.turmeric;
+  ctx.beginPath();
+  ctx.roundRect(L, 690, tw + 48, 64, 32);
+  ctx.fill();
+  ctx.fillStyle = C.ink;
+  ctx.fillText(p.titleBn, L + 24, 734);
 
   // progress bar
-  const bx = 72;
-  const by = gridBottom + 106;
-  const bw = W - 144;
+  const pct = Math.round((n / 64) * 100);
+  const bw = Math.min(colW - 30, 380);
   ctx.fillStyle = 'rgba(251,247,236,0.18)';
   ctx.beginPath();
-  ctx.roundRect(bx, by, bw, 14, 7);
+  ctx.roundRect(L, 800, bw, 16, 8);
   ctx.fill();
-  ctx.fillStyle = C.turmeric;
+  ctx.fillStyle = C.chili;
   ctx.beginPath();
-  ctx.roundRect(bx, by, Math.max(14, (bw * p.explored.size) / 64), 14, 7);
+  ctx.roundRect(L, 800, Math.max(16, (bw * n) / 64), 16, 8);
   ctx.fill();
+  ctx.fillStyle = 'rgba(251,247,236,0.85)';
+  ctx.font = `600 30px ${BN}`;
+  ctx.fillText(`বাংলাদেশের ${toBnDigits(pct)}% · ${toBnDigits(p.triedCount)}টি খাবার`, L, 868);
 
+  // legend under the left column
+  ctx.fillStyle = C.chili;
+  ctx.beginPath();
+  ctx.roundRect(L, 920, 28, 28, 6);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(251,247,236,0.85)';
+  ctx.font = `500 28px ${BN}`;
+  ctx.fillText('= যে জেলার খাবার খেয়েছি', L + 42, 944);
+
+  // tasted foods line below the map
+  const listY = Math.max(mapY + mapH + 40, 1010);
   if (p.highlights.length) {
-    ctx.fillStyle = C.paperHi;
-    ctx.font = `600 30px ${BN}`;
-    const line = p.highlights.slice(0, 3).map((f) => f.nameBn).join('  ·  ');
-    wrap(ctx, line, W - 144, 1).forEach((l) => ctx.fillText(l, 72, by + 70));
+    ctx.fillStyle = 'rgba(251,247,236,0.9)';
+    ctx.font = `600 32px ${BN}`;
+    const line = 'খেয়েছি: ' + p.highlights.slice(0, 3).map((f) => f.nameBn).join(' · ');
+    wrap(ctx, line, W - 2 * L, 1).forEach((l) => ctx.fillText(l, L, listY));
   }
-  footer(ctx, true);
+
+  // call to action band
+  const by = 1120;
+  ctx.fillStyle = C.paperHi;
+  ctx.beginPath();
+  ctx.roundRect(48, by, W - 96, 130, 28);
+  ctx.fill();
+  ctx.fillStyle = C.paddy;
+  ctx.font = `700 40px ${BN}`;
+  ctx.fillText('আপনি কয়টা জেলার স্বাদ নিয়েছেন?', 88, by + 56);
+  ctx.fillStyle = C.chili;
+  ctx.font = `600 30px ${SANS}`;
+  ctx.fillText(SITE_URL.replace(/^https?:\/\//, ''), 88, by + 102);
+
+  ctx.fillStyle = 'rgba(251,247,236,0.7)';
+  ctx.font = `400 22px ${SANS}`;
+  ctx.textAlign = 'right';
+  ctx.fillText('Developed by Imam Mehedi Hasan', W - 56, H - 36);
+  ctx.textAlign = 'left';
+  ctx.fillText('Map: BBS / OCHA (CC BY 3.0 IGO)', 56, H - 36);
   return toBlob(c);
 }
 

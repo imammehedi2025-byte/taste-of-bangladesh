@@ -23,7 +23,7 @@ export function DistrictsIndex() {
   return (
     <div>
       <PageHeader title="64 districts" titleBn="৬৪ জেলা">
-        Pick a district to see what it is known for. Stamped districts are ones you have tasted.
+        Pick a district to see what it is known for. Districts you have tasted are shown in green.
       </PageHeader>
       <label className="mb-8 flex max-w-md items-center gap-2 rounded-full border border-ink/20 bg-paper-hi px-4 focus-within:border-paddy">
         <Search className="h-5 w-5 text-ink-soft" />
@@ -102,7 +102,7 @@ export function DistrictPage() {
         </h1>
         <p className="bn relative text-3xl text-turmeric sm:text-4xl">{d.nameBn}</p>
         <p className="relative mt-4 max-w-md text-paper-hi/85">
-          {on ? 'Stamped. You have tasted at least one food from here.' : 'Mark any food below as Tried to stamp this district in your passport.'}
+          {on ? 'Tasted. This district is red on your map.' : 'Mark any food below as Tried and this district turns red on your map.'}
         </p>
         <div
           className={`relative mt-5 grid h-24 w-24 place-items-center rounded-full border-[3px] sm:absolute sm:right-10 sm:bottom-10 sm:mt-0 sm:h-32 sm:w-32 ${

@@ -29,7 +29,8 @@ const config = {
 };
 
 /** When env vars are missing the app still works for browsing; community features show a setup notice. */
-export const firebaseEnabled = Boolean(config.apiKey && config.projectId && config.appId);
+// VITE_FIREBASE_DISABLED=1 runs the app in device-only mode (useful for local testing).
+export const firebaseEnabled = env.VITE_FIREBASE_DISABLED !== '1' && Boolean(config.apiKey && config.projectId && config.appId);
 
 let app: FirebaseApp | null = null;
 export let auth: Auth | null = null;

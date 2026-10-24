@@ -18,7 +18,7 @@ export default function About() {
         <section>
           <h2 className="mb-2 text-2xl font-bold">The challenge</h2>
           <p>
-            Each district has a stamp in your Food Passport. Mark any of a district’s researched foods as <em>Tried</em> and its stamp is inked. Taste something from
+            Your passport is a map of Bangladesh. Mark any of a district’s researched foods as <em>Tried</em> and that district turns red on your map. Taste something from
             all 64 to become a Bangladesh Food Champion. Titles along the way: First Taster (1 district), Food Explorer (8), Regional Taste Hunter (32) and Bangladesh
             Food Champion (64).
           </p>
@@ -42,6 +42,7 @@ export default function About() {
             </li>
           </ul>
           <p className="mt-3">
+            District map boundaries: Bangladesh Bureau of Statistics and OCHA ROAP via geoBoundaries, licensed CC BY 3.0 IGO (simplified for screen use).
             Two news lists that repeat each other word for word are counted as one source. No photos are used; each food gets designed artwork so nothing is copied or
             hot-linked. Spot a mistake? Every food page has a <em>Report a problem</em> link.
           </p>

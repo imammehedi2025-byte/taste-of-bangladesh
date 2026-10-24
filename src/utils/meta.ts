@@ -89,3 +89,20 @@ export function avgRating(sum: number, count: number) {
 }
 
 export const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '') || (typeof location !== 'undefined' ? location.origin : '');
+
+/** Districts with a want-to-try original food and nothing tasted yet. */
+export function wantDistricts(progress: Record<string, ProgressState>, tasted: Set<string>): Set<string> {
+  const out = new Set<string>();
+  for (const f of FOODS) if (progress[f.id] === 'want' && !tasted.has(f.districtId)) out.add(f.districtId);
+  return out;
+}
+
+export function achievementBn(next?: { en: string; at: number }) {
+  const map: Record<string, string> = {
+    'First Taster': 'নতুন স্বাদগ্রাহী',
+    'Food Explorer': 'খাদ্য অভিযাত্রী',
+    'Regional Taste Hunter': 'আঞ্চলিক স্বাদ শিকারি',
+    'Bangladesh Food Champion': 'বাংলাদেশের খাদ্য চ্যাম্পিয়ন',
+  };
+  return next ? map[next.en] ?? next.en : '';
+}

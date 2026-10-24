@@ -130,7 +130,7 @@ function Toaster() {
         <div
           key={t.id}
           className={`toast-in pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl px-4 py-3 shadow-lg ${
-            t.kind === 'error' ? 'bg-chili text-white' : t.kind === 'success' ? 'bg-paddy text-paper-hi' : 'bg-ink text-paper-hi'
+            t.kind === 'error' ? 'bg-chili text-white' : 'bg-ink text-paper-hi'
           }`}
           role={t.kind === 'error' ? 'alert' : 'status'}
         >

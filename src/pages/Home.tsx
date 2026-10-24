@@ -4,9 +4,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../hooks/useApp';
 import { FOODS } from '../data/foods';
 import { DIVISIONS } from '../data/divisions';
-import { StampGrid } from '../components/StampGrid';
+import { TasteMap, MapLegend } from '../components/TasteMap';
+import { DistrictSheet } from '../components/DistrictSheet';
 import { FoodCard } from '../components/FoodCard';
-import { computeJourney, TOTAL_DISTRICTS } from '../utils/meta';
+import { computeJourney, TOTAL_DISTRICTS, wantDistricts } from '../utils/meta';
+import { toBnDigits } from '../utils/text';
 import { Spinner } from '../components/ui';
 
 /** Featured: one verified food per division, so the home page spans the whole country. */
@@ -19,6 +21,8 @@ const FEATURED = DIVISIONS.map(
 export default function Home() {
   const { progress, community, communityState, stats, statsState, firebaseEnabled } = useApp();
   const journey = useMemo(() => computeJourney(progress, community), [progress, community]);
+  const want = useMemo(() => wantDistricts(progress, journey.exploredDistricts), [progress, journey.exploredDistricts]);
+  const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const nav = useNavigate();
 
@@ -38,18 +42,19 @@ export default function Home() {
   return (
     <div>
       {/* Hero: the question, and the passport page you will fill */}
-      <section className="grid gap-8 pt-8 pb-12 md:grid-cols-[1.05fr_1fr] md:items-center md:pt-14">
-        <div>
+      <section className="grid gap-6 pt-6 pb-12 md:grid-cols-[1.05fr_1fr] md:grid-rows-[auto_auto] md:gap-x-8 md:gap-y-4 md:pt-14">
+        <div className="md:col-start-1 md:row-start-1 md:self-end max-md:order-1">
           <p className="bn mb-3 text-xl text-chili">৬৪ জেলা, ৬৪ স্বাদ</p>
           <h1 className="text-[2.6rem] leading-[1.02] font-bold tracking-tight text-paddy sm:text-6xl" style={{ fontVariationSettings: '"wdth" 80' }}>
             How Much of Bangladesh Have You Tasted?
           </h1>
-          <p className="mt-5 max-w-lg text-lg text-ink-soft">
-            Every district has a food it is famous for. Find them, mark the ones you have eaten, and collect a stamp for each district until your
-            passport is full.
+          <p className="mt-4 max-w-lg text-lg text-ink-soft">
+            Every district has a food it is famous for. Tap the districts whose food you have eaten and watch your map of Bangladesh fill up.
           </p>
+        </div>
+        <div className="md:col-start-1 md:row-start-2 md:self-start max-md:order-3">
           <form
-            className="mt-6 flex max-w-lg items-center gap-2 rounded-full border border-ink/20 bg-paper-hi p-1.5 pl-4 focus-within:border-paddy"
+            className="flex max-w-lg items-center gap-2 rounded-full border border-ink/20 bg-paper-hi p-1.5 pl-4 focus-within:border-paddy"
             onSubmit={(e) => {
               e.preventDefault();
               nav(`/explore?q=${encodeURIComponent(q)}`);
@@ -76,27 +81,32 @@ export default function Home() {
           </div>
         </div>
 
-        <Link to="/passport" className="block rounded-[1.75rem] bg-paddy p-5 text-paper-hi shadow-xl sm:p-7" aria-label="Open my Food Passport">
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <div>
-              <p className="text-sm text-paper-hi/75">Food Passport</p>
-              <p className="text-4xl font-bold" style={{ fontVariationSettings: '"wdth" 80' }}>
-                {n} <span className="text-xl font-semibold text-paper-hi/75">of {TOTAL_DISTRICTS} districts explored</span>
-              </p>
-            </div>
-            <span className="bn text-right text-sm text-turmeric">{journey.title.bn}</span>
+        <div className="rounded-[1.75rem] bg-paddy p-5 text-paper-hi shadow-xl sm:p-7 md:col-start-2 md:row-span-2 md:row-start-1 max-md:order-2">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <p className="bn leading-tight">
+              <span className="text-lg text-paper-hi/80">আমি চেখেছি </span>
+              <span className="text-5xl font-bold">{toBnDigits(n)}</span>
+              <span className="text-xl text-paper-hi/70">/{toBnDigits(TOTAL_DISTRICTS)} জেলা</span>
+            </p>
+            <Link to="/passport" className="bnui shrink-0 rounded-full bg-turmeric px-3 py-1.5 text-sm font-semibold text-ink">
+              আমার ম্যাপ
+            </Link>
           </div>
-          <div className="stitch-line mb-4 text-turmeric/60" />
-          <StampGrid explored={journey.exploredDistricts} linkable={false} />
-        </Link>
+          <p className="bnui mb-2 text-sm text-paper-hi/80">👆 আপনার খাওয়া জেলায় চাপ দিন</p>
+          <TasteMap tasted={journey.exploredDistricts} want={want} tone="dark" selected={selected} onSelect={setSelected} className="mx-auto max-w-[380px]" />
+          <div className="mt-2 flex justify-center">
+            <MapLegend tone="dark" />
+          </div>
+        </div>
+        <DistrictSheet districtId={selected} onClose={() => setSelected(null)} />
       </section>
 
       {/* How it works — a real sequence, so it is numbered */}
       <section className="mb-14 grid gap-4 rounded-3xl bg-paper-hi p-6 sm:grid-cols-3 sm:p-8" aria-label="How it works">
         {[
-          ['Find', 'Open a district and see what it is known for, with the sources behind each claim.'],
-          ['Mark', 'Tap Tried or Want to try. One tried food from a district earns that district’s stamp.'],
-          ['Share', 'Rate, recommend, and download your passport as an image to challenge friends.'],
+          ['Tap', 'Tap a district on the map to see what it is famous for, with the sources behind each claim.'],
+          ['Mark', 'Mark a food you have eaten. That district turns red on your map.'],
+          ['Share', 'Download your map as an image and ask friends how much of Bangladesh they have tasted.'],
         ].map(([t, d], i) => (
           <div key={t} className="flex gap-4">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-dashed border-chili font-bold text-chili">{i + 1}</span>
